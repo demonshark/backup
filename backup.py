@@ -157,7 +157,7 @@ def clean(log):
 	s = ssh_login(log)
 	rm = 'rm '
 	if bkp['dirs']:
-		foreach (name, path) in ssh['dirs']:
+		for (name, path) in ssh['dirs']:
 			rm = rm + name + '.tar.gz '
 	if bkp['db']:
 		rm = rm + mysql['db'] + '.tar.gz ' + mysql['db'] + '.sql '
