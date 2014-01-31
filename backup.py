@@ -2,13 +2,13 @@
 
 # --------------------------------------------------------------------------
 # "THE BEER-WARE LICENSE" (Revision 42):
-# <ricardo.serro@gmail.com> wrote this file. As long as you retain this 
-# notice you can do whatever you want with this stuff. If we meet some day, 
-# and you think this stuff is worth it, you can buy me a beer in return 
-# Ricardo Serro
+# Ricardo Serro <ricardo.serro@gmail.com> wrote this file. As long as you 
+# retain this notice you can do whatever you want with this stuff. If we 
+# meet some day, and you think this stuff is worth it, you can buy me a 
+# beer in return.
 # --------------------------------------------------------------------------
 #
-# Script to backup files and/or mysql databases from some of my sites.
+# Script to backup files and/or mysql database from some of my sites.
 # Uses ssh, scp, tar, mysqldump and mail.
 
 import sys
@@ -46,7 +46,7 @@ ssh = {
 	'temp' : '/home/sitex/bkp_tmp',
 	# Dirs to be archived written as tuples (archive_name, dir_path).
 	'dirs' : [
-		('public_html' , '/home/sitex/public_html')
+		('public_html' , '/home/sitex/public_html'),
 	]
 }
 
@@ -152,9 +152,17 @@ def copy(log):
 		raise Exception('SCP copy error. Exit code differ from zero.')
 
 def clean(log):
+	global bkp, ssh, mysql
 	log.write("\n" + '# Cleaning...' + "\n")
 	s = ssh_login(log)
-	s.sendline('rm -rf * && echo $?')
+	rm = 'rm '
+	if bkp['dirs']:
+		foreach (name, path) in ssh['dirs']:
+			rm = rm + name + '.tar.gz '
+	if bkp['db']:
+		rm = rm + mysql['db'] + '.tar.gz ' + mysql['db'] + '.sql '
+	rm = rm + bkp['name'] + '.tar'
+	s.sendline(rm + ' && echo $?')
 	s.prompt()
 	check_exit_code(s)
 	ssh_logout(s)
