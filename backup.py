@@ -13,9 +13,10 @@
 
 import sys
 import time
-from subprocess import call
+import json
 import pexpect
 import pxssh
+from subprocess import call
 
 bkp = {
 	# Local dir to store backups
@@ -89,6 +90,20 @@ def db(s, log):
 	s.prompt()
 	check_exit_code(s)
 
+def restore_info(s, log):
+	global bkp, ssh, mysql
+	log.write("\n" + '# Writing restore info file.' + "\n")
+	info = {'dirs' : '', 'db' : ''}
+	if bkp['dirs']:
+		info['dirs'] = ssh['dirs']
+	if bkp['db']:
+		info['db'] = mysql['db']
+	s.sendline('touch restore_info.bkp && echo $?')
+	s.prompt()
+	check_exit_code(s)
+	s.sendline('echo \'' + json.dumps(info) + '\' > restore_info.bkp')
+	s.prompt()
+
 def ssh_login(log):
 	global ssh
 	log.write("\n" + '# SSH: connecting to ' + ssh['host'] + "\n")
@@ -114,20 +129,21 @@ def archive(log):
 	if not bkp['dirs'] and not bkp['db']:
 		raise Exception('Nothing to backup.')
 	
-	# Login & Archive
+	# Login & Archive & Restore Info
 	s = ssh_login(log)
 	if bkp['dirs']:
 		dirs(s)
 	if bkp['db']:
 		db(s, log)
+	restore_info(s, log)
 
 	# 1 Tar
-	tar = 'tar cvf ' + bkp['name'] + '.tar'
+	tar = 'tar cvf ' + bkp['name'] + '.tar restore_info.bkp '
 	if bkp['dirs']:
 		for (name, path) in ssh['dirs']:
-			tar = tar + ' ' + name + '.tar.gz'
+			tar = tar + name + '.tar.gz '
 	if bkp['db']:
-		tar = tar + ' ' + mysql['db'] + '.tar.gz'
+		tar = tar + mysql['db'] + '.tar.gz '
 	s.sendline(tar + ' && echo $?')
 	s.prompt()
 	check_exit_code(s)
@@ -155,7 +171,7 @@ def clean(log):
 	global bkp, ssh, mysql
 	log.write("\n" + '# Cleaning...' + "\n")
 	s = ssh_login(log)
-	rm = 'rm '
+	rm = 'rm -f restore_info.bkp '
 	if bkp['dirs']:
 		for (name, path) in ssh['dirs']:
 			rm = rm + name + '.tar.gz '
