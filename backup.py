@@ -13,7 +13,6 @@
 
 import sys
 import time
-import json
 import pexpect
 import pxssh
 from subprocess import call
@@ -24,8 +23,8 @@ bkp = {
 	# Backup naming
 	'name' : time.strftime('%Y-%m-%d-%H-%M-%S'),
 	# Timeout in seconds
-	'timeout' : 3600,
-	# Shoud backup dirs?
+	'timeout' : 21600,
+	# Shoud backup dirs/files?
 	'dirs' : True,
 	# Shoud backup database?
 	'db' : True,
@@ -45,7 +44,7 @@ ssh = {
 	'pass' : 'serro',
 	# Temporary dir to build the backup archives. Must already exist.
 	'temp' : '/home/sitex/bkp_tmp',
-	# Dirs to be archived written as tuples (archive_name, dir_path).
+	# Dirs/files to be archived written as tuples (archive_name, dir_path).
 	'dirs' : [
 		('public_html' , '/home/sitex/public_html'),
 	]
@@ -67,9 +66,7 @@ def dirs(s):
 	global ssh
 	# tar cvzf dirs
 	for (name, path) in ssh['dirs']:
-		sc = path.count('/') - 1
-		s.sendline('tar cvzf ' + name + '.tar.gz --strip-components=' 
-			+ str(sc) + ' ' + path + ' && echo $?')
+		s.sendline('tar cvzf ' + name + '.tar.gz ' + path + ' && echo $?')
 		s.prompt()
 		check_exit_code(s)
 
@@ -90,18 +87,28 @@ def db(s, log):
 	s.prompt()
 	check_exit_code(s)
 
-def restore_info(s, log):
+def write_info(s, log):
 	global bkp, ssh, mysql
-	log.write("\n" + '# Writing restore info file.' + "\n")
-	info = {'dirs' : '', 'db' : ''}
-	if bkp['dirs']:
-		info['dirs'] = ssh['dirs']
+	log.write("\n" + '# Writing info file.' + "\n")
+	info = 'Date and time: ' + bkp['name'][0:4] + '-' + bkp['name'][5:7] \
+		+ '-' + bkp['name'][8:10] + ' ' + bkp['name'][11:13] + ':' \
+		+ bkp['name'][14:16] + ':' + bkp['name'][17:19] + "\n"
+	# Database
 	if bkp['db']:
-		info['db'] = mysql['db']
-	s.sendline('touch restore_info.bkp && echo $?')
+		info = info + 'Database: ' + mysql['db'] + "\n"
+	else:
+		info = info + 'Database: not backed up' + "\n"
+	# Dirs/Files
+	if bkp['dirs']:
+		info = info + 'Dirs/Files: ' + "\n"
+		for (name, path) in ssh['dirs']:
+			info = info + '    ' + name + ' @ ' + path + "\n"
+	else:
+		info = info + 'Dirs/Files: not backed up'
+	s.sendline('touch info.bkp && echo $?')
 	s.prompt()
 	check_exit_code(s)
-	s.sendline('echo \'' + json.dumps(info) + '\' > restore_info.bkp')
+	s.sendline('echo \'' + info + '\' > info.bkp')
 	s.prompt()
 
 def ssh_login(log):
@@ -135,10 +142,10 @@ def archive(log):
 		dirs(s)
 	if bkp['db']:
 		db(s, log)
-	restore_info(s, log)
+	write_info(s, log)
 
 	# 1 Tar
-	tar = 'tar cvf ' + bkp['name'] + '.tar restore_info.bkp '
+	tar = 'tar cvf ' + bkp['name'] + '.tar info.bkp '
 	if bkp['dirs']:
 		for (name, path) in ssh['dirs']:
 			tar = tar + name + '.tar.gz '
@@ -171,7 +178,7 @@ def clean(log):
 	global bkp, ssh, mysql
 	log.write("\n" + '# Cleaning...' + "\n")
 	s = ssh_login(log)
-	rm = 'rm -f restore_info.bkp '
+	rm = 'rm -f info.bkp '
 	if bkp['dirs']:
 		for (name, path) in ssh['dirs']:
 			rm = rm + name + '.tar.gz '
@@ -201,22 +208,22 @@ def backup():
 	log.write("\n" + '# End ' + time.strftime('%Y-%m-%d %H:%M:%S') + "\n")
 	log.close()
 
-	# Exit Status & Emailing Actions
+	# Emailing Actions & Exit Status
 	if exc:
 		print 'failure'
 		if mail['failure']:
 			call('cat ' + log_path + ' | mail -s "' + mail['failure'] 
 				+ '" "' + mail['to'] + '"', shell=True)
-		return 1
+		sys.exit(1)
 	else:
 		print 'success'
 		if mail['success']:
 			call('cat ' + log_path + ' | mail -s "' + mail['success'] 
 				+ '" "' + mail['to'] + '"', shell=True)
-		return 0
+		sys.exit(0)
 
 def main(argv):
-	sys.exit(backup())
+	backup()
 
 if __name__ == "__main__":
 	main(sys.argv)
